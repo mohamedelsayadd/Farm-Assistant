@@ -1,0 +1,29 @@
+[project]
+name = "farm-assistant"
+version = "0.1.0"
+description = "Prototype Arabic farm chatbot backend using FastAPI and DashScope via the OpenAI SDK."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.136.3",
+    "openai>=2.41.0",
+    "pydantic-settings>=2.14.1",
+    "redis>=8.0.0",
+    "uvicorn>=0.49.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
