@@ -220,3 +220,17 @@ __marimo__/
 .streamlit/secrets.toml
 
 .swagger-output.json
+
+# Project-local generated and secret files
+src/.env
+src/.env/*
+!src/.env.example
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage*
+htmlcov/
+.venv/
