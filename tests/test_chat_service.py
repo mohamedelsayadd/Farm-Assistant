@@ -1,6 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from services.chat_prompts import SYSTEM_PROMPT
 from services.chat_service import ChatService
@@ -80,19 +83,21 @@ def make_response(message: FakeAssistantMessage) -> Any:
     return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
-def test_chat_service_returns_direct_answer_without_tools() -> None:
+@pytest.mark.asyncio
+async def test_chat_service_returns_direct_answer_without_tools() -> None:
     llm_client = FakeLLMClient(
         [make_response(FakeAssistantMessage("اسقِ النبات صباحًا."))]
     )
     service = ChatService(llm_client)
 
-    answer = asyncio.run(service.get_answer("conversation-1", "أفضل وقت للري؟"))
+    answer = await service.get_answer("test-jwt", "conversation-1", "أفضل وقت للري؟")
 
     assert answer == "اسقِ النبات صباحًا."
     assert llm_client.requests[0]["tool_choice"] == "auto"
 
 
-def test_chat_service_executes_tool_then_requests_final_answer() -> None:
+@pytest.mark.asyncio
+async def test_chat_service_executes_tool_then_requests_final_answer() -> None:
     tool_call = SimpleNamespace(
         id="call_1",
         function=SimpleNamespace(name="get_farm_info"),
@@ -106,7 +111,15 @@ def test_chat_service_executes_tool_then_requests_final_answer() -> None:
     chat_memory = FakeChatMemory()
     service = ChatService(llm_client, chat_memory)
 
-    answer = asyncio.run(service.get_answer("conversation-1", "درجة الحرارة كام؟"))
+    with patch("services.chat_service.execute_tool", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = {
+            "temperature": 27.4,
+            "humidity": 65.0,
+            "soil_moisture": 42.0,
+            "co2": 410.0,
+        }
+
+        answer = await service.get_answer("test-jwt", "conversation-1", "درجة الحرارة كام؟")
 
     assert answer == "درجة الحرارة الحالية 27.4 درجة."
     assert len(llm_client.requests) == 2
@@ -132,7 +145,7 @@ def test_chat_service_sends_history_before_current_message() -> None:
     )
     service = ChatService(llm_client, chat_memory)
 
-    answer = asyncio.run(service.get_answer("conversation-1", "متى أرويه؟"))
+    answer = asyncio.run(service.get_answer("test-jwt", "conversation-1", "متى أرويه؟"))
 
     assert answer == "الإجابة الجديدة."
     assert llm_client.requests[0]["messages"] == [
@@ -155,7 +168,7 @@ def test_chat_service_continues_without_memory_when_read_fails() -> None:
     chat_memory = FakeChatMemory(fail_reads=True)
     service = ChatService(llm_client, chat_memory)
 
-    answer = asyncio.run(service.get_answer("conversation-1", "أفضل وقت للري؟"))
+    answer = asyncio.run(service.get_answer("test-jwt", "conversation-1", "أفضل وقت للري؟"))
 
     assert answer == "إجابة بدون ذاكرة."
     assert llm_client.requests[0]["messages"] == [

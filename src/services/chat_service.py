@@ -17,7 +17,7 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_farm_info",
-            "description": "Get current mock farm sensor readings: temperature, humidity, soil moisture, and CO2.",
+            "description": "Get structured farm information, connectivity details, configured sensors, latest sensor readings, units, thresholds, and reading timestamps.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -82,8 +82,8 @@ class ChatService:
 
         for tool_call in tool_calls:
             logger.info("chat_tool_call_started tool_call_id=%s tool_name=%s", tool_call.id, tool_call.function.name)
-            tool_result = execute_tool(JWT=JWT,
-                                       name=tool_call.function.name)
+            tool_result = await execute_tool(JWT=JWT,
+                                              name=tool_call.function.name)
             messages.append(
                 {
                     "role": "tool",
