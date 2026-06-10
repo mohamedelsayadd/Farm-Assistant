@@ -3,9 +3,39 @@ import logging
 from typing import Any
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field
 
 
 logger = logging.getLogger(__name__)
+
+
+class EmployeeOut(BaseModel):
+    user_id: str | None = None
+    role: str | None = None
+
+
+class ReadingOut(BaseModel):
+    name: str | None = None
+    value: Any = Field(default=None, alias="reading")
+    created_at: str | None = Field(default=None, alias="createdAt")
+    unit: str | None = None
+    label_ar: str | None = None
+    lower_limit: float | int | None = None
+    upper_limit: float | int | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DeviceOut(BaseModel):
+    device_id: str | None = None
+    device_name: str | None = None
+    employees: list[EmployeeOut] = Field(default_factory=list)
+    readings: list[ReadingOut] = Field(default_factory=list)
+
+
+class FarmDevicesOut(BaseModel):
+    farm: str | None = None
+    devices: list[DeviceOut] = Field(default_factory=list)
 
 
 async def get_farm_info(JWT: str) -> dict[str, Any]:
@@ -29,80 +59,90 @@ async def get_farm_info(JWT: str) -> dict[str, Any]:
 
 
 def _format_farm_info_response(api_response: Any) -> dict[str, Any]:
-    farms = api_response if isinstance(api_response, list) else [api_response]
-    return {
-        "farms": [
-            _format_farm(farm)
-            for farm in farms
-            if isinstance(farm, dict)
-        ]
-    }
+    raw_devices = api_response if isinstance(api_response, list) else [api_response]
+    devices: list[DeviceOut] = []
+    farm_name: str | None = None
+
+    for device in raw_devices:
+        if not isinstance(device, dict):
+            continue
+
+        if farm_name is None:
+            farm_name = _get_nested_value(device, "_project", "type")
+
+        sensors_meta = _build_sensors_metadata(device)
+        devices.append(
+            DeviceOut(
+                device_id=device.get("_id") or device.get("id"),
+                device_name=device.get("name"),
+                employees=_format_employees(device.get("employees", [])),
+                readings=_format_readings(device.get("lastRead", []), sensors_meta),
+            )
+        )
+
+    return FarmDevicesOut(farm=farm_name, devices=devices).model_dump()
 
 
-def _format_farm(farm: dict[str, Any]) -> dict[str, Any]:
-    readings_by_name = {
-        reading.get("name"): reading
-        for reading in farm.get("lastRead", [])
-        if isinstance(reading, dict) and reading.get("name")
-    }
+def _build_sensors_metadata(device: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    sensors_meta: dict[str, dict[str, Any]] = {}
 
-    return {
-        "id": farm.get("id") or farm.get("_id"),
-        "name": farm.get("name"),
-        "project_type": _get_nested_value(farm, "_project", "type"),
-        "connectivity": {
-            "type": farm.get("connectivityType"),
-            "renew_type": farm.get("connectivityRenewType"),
-            "manual_renew_date": farm.get("connectivityManualRenewDate"),
-            "offline_notification_enabled": farm.get("offlineNotificationEnabled"),
-            "offline_notification_duration": farm.get("timeDuration"),
-        },
-        "created_at": farm.get("createdAt"),
-        "last_updated_at": farm.get("updatedAt"),
-        "sensors": [
-            _format_sensor(sensor_config, readings_by_name)
-            for sensor_config in farm.get("sensortypes", [])
-            if isinstance(sensor_config, dict)
-        ],
-    }
+    for sensor in device.get("sensortypes", []):
+        if not isinstance(sensor, dict):
+            continue
+
+        sensor_type = sensor.get("sensor_type") if isinstance(sensor.get("sensor_type"), dict) else {}
+        sensor_name = sensor_type.get("type")
+        if not sensor_name:
+            continue
+
+        sensors_meta[sensor_name] = {
+            "unit": sensor_type.get("measurement_unit"),
+            "label_ar": sensor_type.get("type_ar"),
+            "lower_limit": sensor.get("lower_limit"),
+            "upper_limit": sensor.get("upper_limit"),
+        }
+
+    return sensors_meta
 
 
-def _format_sensor(sensor_config: dict[str, Any], readings_by_name: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    sensor_type = sensor_config.get("sensor_type") if isinstance(sensor_config.get("sensor_type"), dict) else {}
-    name = sensor_type.get("type")
-    latest_reading = readings_by_name.get(name, {})
-    current_reading = latest_reading.get("reading")
-    lower_limit = sensor_config.get("lower_limit")
-    upper_limit = sensor_config.get("upper_limit")
+def _format_employees(raw_employees: Any) -> list[EmployeeOut]:
+    if not isinstance(raw_employees, list):
+        return []
 
-    return {
-        "name": name,
-        "name_ar": sensor_type.get("type_ar"),
-        "unit": sensor_type.get("measurement_unit"),
-        "current_reading": current_reading,
-        "last_read_at": latest_reading.get("createdAt"),
-        "lower_limit": lower_limit,
-        "upper_limit": upper_limit,
-        "historical_min": _get_nested_value(latest_reading, "min", "reading"),
-        "historical_min_at": _get_nested_value(latest_reading, "min", "createdAt"),
-        "historical_max": _get_nested_value(latest_reading, "max", "reading"),
-        "historical_max_at": _get_nested_value(latest_reading, "max", "createdAt"),
-        "status": _get_sensor_status(current_reading, lower_limit, upper_limit),
-    }
+    return [
+        EmployeeOut(
+            user_id=_get_nested_value(employee, "user", "_id"),
+            role=employee.get("role"),
+        )
+        for employee in raw_employees
+        if isinstance(employee, dict)
+    ]
 
 
-def _get_sensor_status(reading: Any, lower_limit: Any, upper_limit: Any) -> str:
-    if not isinstance(reading, int | float):
-        return "unavailable"
-    if not isinstance(lower_limit, int | float) or not isinstance(upper_limit, int | float):
-        return "normal"
-    if lower_limit > upper_limit:
-        return "normal"
-    if reading < lower_limit:
-        return "below_limit"
-    if reading > upper_limit:
-        return "above_limit"
-    return "normal"
+def _format_readings(raw_readings: Any, sensors_meta: dict[str, dict[str, Any]]) -> list[ReadingOut]:
+    if not isinstance(raw_readings, list):
+        return []
+
+    readings: list[ReadingOut] = []
+    for reading in raw_readings:
+        if not isinstance(reading, dict):
+            continue
+
+        name = reading.get("name")
+        meta = sensors_meta.get(name, {})
+        readings.append(
+            ReadingOut(
+                name=name,
+                reading=reading.get("reading"),
+                createdAt=reading.get("createdAt"),
+                unit=meta.get("unit"),
+                label_ar=meta.get("label_ar"),
+                lower_limit=meta.get("lower_limit"),
+                upper_limit=meta.get("upper_limit"),
+            )
+        )
+
+    return readings
 
 
 def _get_nested_value(data: dict[str, Any], *keys: str) -> Any:

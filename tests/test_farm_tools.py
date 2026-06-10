@@ -89,62 +89,98 @@ async def test_get_farm_info_returns_structured_farm_data() -> None:
 
         farm_info = await get_farm_info("test-jwt")
 
-    assert farm_info["farms"][0]["name"] == "ReNile Environmental Station"
-    assert farm_info["farms"][0]["project_type"] == "Zayed Environmental Station"
-    assert farm_info["farms"][0]["connectivity"] == {
-        "type": "Cellular",
-        "renew_type": "Manual Renew",
-        "manual_renew_date": "2026-05-17T00:00:00.000Z",
-        "offline_notification_enabled": True,
-        "offline_notification_duration": 2,
-    }
+    assert farm_info["farm"] == "Zayed Environmental Station"
+    assert farm_info["devices"][0]["device_id"] == "farm-object-id"
+    assert farm_info["devices"][0]["device_name"] == "ReNile Environmental Station"
     mock_response.raise_for_status.assert_called_once()
 
 
-def test_format_farm_info_response_merges_sensor_config_with_latest_readings() -> None:
+def test_format_farm_info_response_merges_sensor_metadata_with_latest_readings() -> None:
     farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
 
-    sensors = farm_info["farms"][0]["sensors"]
-    so2 = sensors[0]
-    ambient_temp = sensors[1]
+    readings = farm_info["devices"][0]["readings"]
+    so2 = readings[0]
+    ambient_temp = readings[1]
 
     assert so2 == {
         "name": "SO2",
-        "name_ar": "ثاني اكسيد الكبريت",
+        "value": 9,
+        "created_at": "2026-06-09T16:25:53.654Z",
         "unit": "PPB",
-        "current_reading": 9,
-        "last_read_at": "2026-06-09T16:25:53.654Z",
+        "label_ar": "ثاني اكسيد الكبريت",
         "lower_limit": 0,
         "upper_limit": 2000,
-        "historical_min": 0,
-        "historical_min_at": "2025-12-30T06:27:06.255Z",
-        "historical_max": 428,
-        "historical_max_at": "2025-07-17T13:12:54.417Z",
-        "status": "normal",
     }
-    assert ambient_temp["current_reading"] == 68
-    assert ambient_temp["status"] == "above_limit"
+    assert ambient_temp["value"] == 68
+    assert ambient_temp["label_ar"] == "درجه حراره الجو"
+    assert ambient_temp["lower_limit"] == -40
+    assert ambient_temp["upper_limit"] == 60
+
+
+def test_format_farm_info_response_maps_employees() -> None:
+    farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
+
+    assert farm_info["devices"][0]["employees"] == [
+        {
+            "user_id": "user-id",
+            "role": "Manager",
+        }
+    ]
 
 
 def test_format_farm_info_response_omits_internal_and_noisy_fields() -> None:
-    farm = _format_farm_info_response(MOCK_API_RESPONSE)["farms"][0]
-    sensor = farm["sensors"][0]
+    farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
+    device = farm_info["devices"][0]
+    reading = device["readings"][0]
 
-    assert "employees" not in farm
-    assert "_owner" not in farm
-    assert "comment" not in farm
-    assert "sendSms" not in sensor
-    assert "_id" not in sensor
+    assert "connectivity" not in farm_info
+    assert "_owner" not in device
+    assert "comment" not in device
+    assert "sensortypes" not in device
+    assert "sendSms" not in reading
+    assert "_id" not in reading
+    assert "min" not in reading
+    assert "max" not in reading
 
 
-def test_format_farm_info_response_marks_missing_reading_unavailable() -> None:
+def test_format_farm_info_response_omits_configured_sensors_without_readings() -> None:
     farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
 
-    wind_speed = farm_info["farms"][0]["sensors"][2]
+    reading_names = {reading["name"] for reading in farm_info["devices"][0]["readings"]}
 
-    assert wind_speed["current_reading"] is None
-    assert wind_speed["last_read_at"] is None
-    assert wind_speed["status"] == "unavailable"
+    assert "Wind_Speed" not in reading_names
+
+
+def test_format_farm_info_response_handles_reading_without_sensor_metadata() -> None:
+    response = {
+        **MOCK_API_RESPONSE,
+        "lastRead": [
+            {
+                "name": "Battery_level",
+                "reading": 99,
+                "createdAt": "2022-12-13T13:59:55.194Z",
+            }
+        ],
+    }
+
+    reading = _format_farm_info_response(response)["devices"][0]["readings"][0]
+
+    assert reading == {
+        "name": "Battery_level",
+        "value": 99,
+        "created_at": "2022-12-13T13:59:55.194Z",
+        "unit": None,
+        "label_ar": None,
+        "lower_limit": None,
+        "upper_limit": None,
+    }
+
+
+def test_format_farm_info_response_handles_single_object_and_list_responses() -> None:
+    single_response = _format_farm_info_response(MOCK_API_RESPONSE)
+    list_response = _format_farm_info_response([MOCK_API_RESPONSE])
+
+    assert single_response == list_response
 
 
 def test_get_devices_status_returns_expected_mock_fields() -> None:

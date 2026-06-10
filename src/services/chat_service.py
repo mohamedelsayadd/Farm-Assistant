@@ -20,7 +20,7 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_farm_info",
-            "description": "Get structured farm information, connectivity details, configured sensors, latest sensor readings, units, thresholds, and reading timestamps.",
+            "description": "Get cleaned farm devices data including farm name, device names, employees, latest sensor readings, units, thresholds, Arabic labels, and reading timestamps.",
             "parameters": {
                 "type": "object",
                 "properties": {},

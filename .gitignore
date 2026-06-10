@@ -234,3 +234,5 @@ src/.env/*
 .coverage*
 htmlcov/
 .venv/
+
+devices.json
