@@ -1,5 +1,7 @@
 import logging
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI
@@ -7,16 +9,27 @@ from fastapi import Request
 
 from api.v1.endpoints.chat import router as chat_router
 from core.logging import configure_logging
+from services.input_guardrail.factory import get_input_guardrail
 
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    logger.info("application_startup_started")
+    get_input_guardrail()
+    logger.info("application_startup_completed")
+    yield
+    logger.info("application_shutdown_completed")
+
+
 app = FastAPI(
     title="Farm Assistant API",
     description="Prototype Arabic farm chatbot.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.include_router(chat_router, prefix="/api/v1", tags=["chat"])

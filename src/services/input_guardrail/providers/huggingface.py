@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import time
-from typing import Any
 
 from services.input_guardrail.interface import GuardrailResult, InputGuardrail
 
@@ -42,9 +41,10 @@ class HuggingFaceInputGuardrail(InputGuardrail):
                 logits = self.model(**inputs).logits
 
             probabilities = self.torch.nn.functional.softmax(logits, dim=-1)
-            unsafe_score = probabilities[0][1].item()
             predicted_class_id = self.torch.argmax(probabilities, dim=-1).item()
             label = self._get_label(predicted_class_id)
+            score = probabilities[0][predicted_class_id].item()
+            unsafe_score = score if label != "BENIGN" else 0.0
             allowed = unsafe_score < self.block_threshold
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.info(
@@ -71,5 +71,5 @@ class HuggingFaceInputGuardrail(InputGuardrail):
             raise
 
     def _get_label(self, class_id: int) -> str:
-        id_to_label: dict[int, Any] = getattr(self.model.config, "id2label", {})
-        return str(id_to_label.get(class_id, class_id))
+        id_to_label = getattr(self.model.config, "id2label", {})
+        return str(id_to_label.get(class_id, class_id)).upper()

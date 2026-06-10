@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     CHAT_MEMORY_MAX_HISTORY_MESSAGES: int = Field(default=12, gt=0)
     INPUT_GUARDRAIL_ENABLED: bool = Field(default=True)
     INPUT_GUARDRAIL_PROVIDER: str = Field(default="huggingface")
-    INPUT_GUARDRAIL_MODEL_NAME: str = Field(default="NAMAA-Space/Ara-Prompt-Guard_V1")
+    INPUT_GUARDRAIL_MODEL_NAME: str = Field(default="NAMAA-Space/Ara-Prompt-Guard_V0")
     INPUT_GUARDRAIL_MAX_TOKENS: int = Field(default=512, gt=0)
     INPUT_GUARDRAIL_BLOCK_THRESHOLD: float = Field(default=0.5, ge=0.0, le=1.0)
     INPUT_GUARDRAIL_FAIL_CLOSED: bool = Field(default=True)
