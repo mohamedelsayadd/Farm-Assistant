@@ -8,8 +8,11 @@ from services.chat_prompts import SYSTEM_PROMPT
 from services.llm.factory import get_llm_client
 from services.llm.interface import LLMClient
 from services.farm_tools import execute_tool
+from services.input_guardrail.factory import get_input_guardrail
+from services.input_guardrail.interface import InputGuardrail
 from services.memory.factory import get_chat_memory
 from services.memory.interface import ChatMemory
+from core.settings import get_settings
 
 
 TOOLS: list[dict[str, Any]] = [
@@ -39,18 +42,37 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 logger = logging.getLogger(__name__)
+DEFAULT_INPUT_GUARDRAIL_BLOCK_MESSAGE = (
+    "لا أستطيع معالجة هذا الطلب لأنه قد يحتوي على تعليمات غير آمنة أو محاولة للتلاعب بالنظام."
+)
 
 
 class ChatService:
-    def __init__(self, llm_client: LLMClient, chat_memory: ChatMemory | None = None) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        chat_memory: ChatMemory | None = None,
+        input_guardrail: InputGuardrail | None = None,
+        input_guardrail_fail_closed: bool = True,
+        input_guardrail_block_message: str = DEFAULT_INPUT_GUARDRAIL_BLOCK_MESSAGE,
+    ) -> None:
         self.llm_client = llm_client
         self.chat_memory = chat_memory
+        self.input_guardrail = input_guardrail
+        self.input_guardrail_fail_closed = input_guardrail_fail_closed
+        self.input_guardrail_block_message = input_guardrail_block_message
 
         logger.info("chat_service_initialized")
 
     async def get_answer(self, JWT: str, conversation_id: str, user_message: str) -> str:
         start_time = time.perf_counter()
         logger.info("chat_started conversation_id=%s message_length=%s", conversation_id, len(user_message))
+        guardrail_answer = await self._check_input_guardrail(user_message)
+        if guardrail_answer is not None:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.info("chat_blocked_by_input_guardrail duration_ms=%.2f", duration_ms)
+            return guardrail_answer
+
         messages = await self._build_messages(conversation_id, user_message)
 
         try:
@@ -130,7 +152,33 @@ class ChatService:
             return
         await self.chat_memory.save_exchange(conversation_id, user_message, answer)
 
+    async def _check_input_guardrail(self, user_message: str) -> str | None:
+        if self.input_guardrail is None:
+            return None
+
+        try:
+            result = await self.input_guardrail.check(user_message)
+        except Exception:
+            logger.exception("input_guardrail_check_failed fail_closed=%s", self.input_guardrail_fail_closed)
+            if self.input_guardrail_fail_closed:
+                return self.input_guardrail_block_message
+            return None
+
+        if result.allowed:
+            logger.info("input_guardrail_allowed label=%s score=%.4f", result.label, result.score)
+            return None
+
+        logger.warning("input_guardrail_blocked label=%s score=%.4f reason=%s", result.label, result.score, result.reason)
+        return self.input_guardrail_block_message
+
 
 @lru_cache
 def get_chat_service() -> ChatService:
-    return ChatService(get_llm_client(), get_chat_memory())
+    settings = get_settings()
+    return ChatService(
+        get_llm_client(),
+        get_chat_memory(),
+        get_input_guardrail(),
+        settings.INPUT_GUARDRAIL_FAIL_CLOSED,
+        settings.INPUT_GUARDRAIL_BLOCK_MESSAGE,
+    )

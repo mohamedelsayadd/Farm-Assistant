@@ -10,6 +10,8 @@ Requires-Dist: pydantic-settings>=2.14.1
 Requires-Dist: redis>=8.0.0
 Requires-Dist: httpx>=0.28.0
 Requires-Dist: uvicorn>=0.49.0
+Requires-Dist: transformers>=5.10.2
+Requires-Dist: torch>=2.12.0
 
 # Farm Assistant Backend
 
