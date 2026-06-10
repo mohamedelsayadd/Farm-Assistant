@@ -9,6 +9,7 @@ dependencies = [
     "openai>=2.41.0",
     "pydantic-settings>=2.14.1",
     "redis>=8.0.0",
+    "requests>=2.34.2",
     "uvicorn>=0.49.0",
 ]
 

@@ -1,18 +1,23 @@
 import logging
 from typing import Any
 
+import requests
+
 
 logger = logging.getLogger(__name__)
 
 
-def get_farm_readings() -> dict[str, float]:
+def get_farm_info(JWT: str) -> dict[str, float]:
     logger.info("farm_readings_tool_started")
-    return {
-        "temperature": 27.4,
-        "humidity": 62.0,
-        "soil_moisture": 38.5,
-        "co2": 510.0,
-    }
+
+    response = requests.get(
+        "https://renile-iot.com/api/users/devices/",
+        headers={
+            "Authorization": f"JWT {JWT}",
+        }
+    )
+
+    return response.json()
 
 
 def get_devices_status() -> dict[str, str]:
@@ -24,10 +29,10 @@ def get_devices_status() -> dict[str, str]:
     }
 
 
-def execute_tool(name: str) -> dict[str, Any]:
+def execute_tool(JWT: str, name: str) -> dict[str, Any]:
     logger.info("tool_execution_requested tool_name=%s", name)
     tools = {
-        "get_farm_readings": get_farm_readings,
+        "get_farm_info": get_farm_info,
         "get_devices_status": get_devices_status,
     }
 
@@ -36,6 +41,9 @@ def execute_tool(name: str) -> dict[str, Any]:
         logger.warning("tool_execution_rejected tool_name=%s reason=unavailable", name)
         return {"error": f"Tool '{name}' is not available."}
 
-    result = tool()
-    logger.info("tool_execution_completed tool_name=%s result_keys=%s", name, sorted(result.keys()))
+    result = tool(JWT) if name == "get_farm_info" else tool()
+    logger.info("tool_execution_completed tool_name=%s result_type=%s",
+    name,
+    type(result).__name__,
+    )
     return result

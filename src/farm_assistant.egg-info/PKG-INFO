@@ -8,21 +8,23 @@ Requires-Dist: fastapi>=0.136.3
 Requires-Dist: openai>=2.41.0
 Requires-Dist: pydantic-settings>=2.14.1
 Requires-Dist: redis>=8.0.0
+Requires-Dist: requests>=2.34.2
 Requires-Dist: uvicorn>=0.49.0
 
 # Farm Assistant Backend
 
 Prototype Arabic farm chatbot backend built with Python 3.12, FastAPI, Pydantic, uv, and DashScope's OpenAI-compatible API through the OpenAI SDK.
 
-The API receives one user message per request and returns one assistant answer. Requests are independent. There is no chat history, memory, database, authentication, caching, or background worker.
+The API receives one user message per request and returns one assistant answer. Redis stores short-term chat memory per `conversation_id` with a 3600-second TTL. There is no database, authentication, or background worker.
 
 ## Features
 
 - Arabic farm assistant responses.
 - FastAPI REST endpoint for chat.
+- Redis-backed short-term memory per conversation.
 - Async DashScope OpenAI-compatible client using `qwen3.6-27b`.
 - Exactly two mock tools registered with OpenAI function calling:
-- `get_farm_readings()` for temperature, humidity, soil moisture, and CO2.
+- `get_farm_info()` for temperature, humidity, soil moisture, and CO2.
 - `get_devices_status()` for fans, pumps, and lights.
 - Real-time farm readings and device statuses must come from tools only.
 
@@ -40,12 +42,18 @@ src/
 │   └── chat.py
 └── services/
     ├── chat_service.py
+    ├── chat_prompts.py
     ├── farm_tools.py
-    └── llm/
+    ├── llm/
         ├── interface.py
         ├── factory.py
         └── providers/
-            └── dashscope.py
+    │       └── dashscope.py
+    └── memory/
+        ├── interface.py
+        ├── factory.py
+        └── providers/
+            └── redis.py
 ```
 
 ## Setup
@@ -60,6 +68,11 @@ Create `src/.env` from `src/.env.example` and set your DashScope API key:
 
 ```env
 DASHSCOPE_API_KEY=your_dashscope_api_key_here
+DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+MODEL_NAME=qwen3.6-27b
+REDIS_URL=redis://localhost:6379/0
+CHAT_MEMORY_TTL_SECONDS=3600
+CHAT_MEMORY_MAX_HISTORY_MESSAGES=12
 LOG_LEVEL=INFO
 ```
 
@@ -70,6 +83,14 @@ LOG_LEVEL=INFO
 The API logs request lifecycle events, request IDs, latency, chat orchestration, tool calls, and DashScope LLM request timing. Logs do not include API keys or full user messages.
 
 ## Run Locally
+
+Start Redis:
+
+```bash
+docker compose up -d redis
+```
+
+Run the API:
 
 ```bash
 uv run uvicorn main:app --reload --app-dir src
@@ -94,7 +115,7 @@ Ask for farm readings:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"message":"درجة الحرارة عندي كام دلوقتي؟"}'
+  -d '{"conversation_id":"demo-conversation","message":"درجة الحرارة عندي كام دلوقتي؟"}'
 ```
 
 Ask for device status:
@@ -102,7 +123,7 @@ Ask for device status:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"message":"المراوح والمضخات شغالين؟"}'
+  -d '{"conversation_id":"demo-conversation","message":"المراوح والمضخات شغالين؟"}'
 ```
 
 Ask a normal farming question:
@@ -110,7 +131,7 @@ Ask a normal farming question:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"message":"إيه أفضل وقت لري الطماطم؟"}'
+  -d '{"conversation_id":"demo-conversation","message":"إيه أفضل وقت لري الطماطم؟"}'
 ```
 
 Example response:

@@ -16,7 +16,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "get_farm_readings",
+            "name": "get_farm_info",
             "description": "Get current mock farm sensor readings: temperature, humidity, soil moisture, and CO2.",
             "parameters": {
                 "type": "object",
@@ -45,9 +45,10 @@ class ChatService:
     def __init__(self, llm_client: LLMClient, chat_memory: ChatMemory | None = None) -> None:
         self.llm_client = llm_client
         self.chat_memory = chat_memory
+
         logger.info("chat_service_initialized")
 
-    async def get_answer(self, conversation_id: str, user_message: str) -> str:
+    async def get_answer(self, JWT: str, conversation_id: str, user_message: str) -> str:
         start_time = time.perf_counter()
         logger.info("chat_started conversation_id=%s message_length=%s", conversation_id, len(user_message))
         messages = await self._build_messages(conversation_id, user_message)
@@ -81,7 +82,8 @@ class ChatService:
 
         for tool_call in tool_calls:
             logger.info("chat_tool_call_started tool_call_id=%s tool_name=%s", tool_call.id, tool_call.function.name)
-            tool_result = execute_tool(tool_call.function.name)
+            tool_result = execute_tool(JWT=JWT,
+                                       name=tool_call.function.name)
             messages.append(
                 {
                     "role": "tool",

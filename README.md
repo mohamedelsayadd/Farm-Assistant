@@ -11,7 +11,7 @@ The API receives one user message per request and returns one assistant answer. 
 - Redis-backed short-term memory per conversation.
 - Async DashScope OpenAI-compatible client using `qwen3.6-27b`.
 - Exactly two mock tools registered with OpenAI function calling:
-- `get_farm_readings()` for temperature, humidity, soil moisture, and CO2.
+- `get_farm_info()` for temperature, humidity, soil moisture, and CO2.
 - `get_devices_status()` for fans, pumps, and lights.
 - Real-time farm readings and device statuses must come from tools only.
 

@@ -24,7 +24,7 @@ async def chat(
         request.conversation_id,
         len(request.message),
     )
-    answer = await chat_service.get_answer(request.conversation_id, request.message)
+    answer = await chat_service.get_answer(request.JWT, request.conversation_id, request.message)
     logger.info(
         "chat_endpoint_completed request_id=%s answer_length=%s",
         request_id,

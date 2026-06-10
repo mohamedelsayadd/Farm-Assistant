@@ -95,7 +95,7 @@ def test_chat_service_returns_direct_answer_without_tools() -> None:
 def test_chat_service_executes_tool_then_requests_final_answer() -> None:
     tool_call = SimpleNamespace(
         id="call_1",
-        function=SimpleNamespace(name="get_farm_readings"),
+        function=SimpleNamespace(name="get_farm_info"),
     )
     llm_client = FakeLLMClient(
         [
