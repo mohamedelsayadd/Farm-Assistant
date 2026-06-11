@@ -5,14 +5,14 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.settings import get_settings
 
+settings = get_settings()
 logger = logging.getLogger(__name__)
-
 
 class EmployeeOut(BaseModel):
     user_id: str | None = None
     role: str | None = None
-
 
 class ReadingOut(BaseModel):
     name: str | None = None
@@ -25,13 +25,11 @@ class ReadingOut(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-
 class DeviceOut(BaseModel):
     device_id: str | None = None
     device_name: str | None = None
     employees: list[EmployeeOut] = Field(default_factory=list)
     readings: list[ReadingOut] = Field(default_factory=list)
-
 
 class FarmDevicesOut(BaseModel):
     farm: str | None = None
@@ -43,7 +41,7 @@ async def get_farm_info(JWT: str) -> dict[str, Any]:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            "https://renile-iot.com/api/users/devices/",
+            settings.RENILE_DEVICES_API,
             headers={
                 "Authorization": f"JWT {JWT}",
             }

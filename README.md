@@ -74,7 +74,7 @@ The API logs request lifecycle events, request IDs, latency, chat orchestration,
 Start Redis:
 
 ```bash
-docker compose up -d redis
+docker compose -f docker/compose.yaml up -d redis
 ```
 
 Run the API:
@@ -89,6 +89,14 @@ Open the API docs:
 http://127.0.0.1:8000/docs
 ```
 
+Run the mock Streamlit UI in another terminal:
+
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+Enter your JWT and a conversation ID once in the Streamlit setup form before chatting.
+
 Health check:
 
 ```bash
@@ -102,7 +110,7 @@ Ask for farm readings:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"conversation_id":"demo-conversation","message":"درجة الحرارة عندي كام دلوقتي؟"}'
+  -d '{"JWT":"your_jwt_here","conversation_id":"demo-conversation","message":"درجة الحرارة عندي كام دلوقتي؟"}'
 ```
 
 Ask for device status:
@@ -110,7 +118,7 @@ Ask for device status:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"conversation_id":"demo-conversation","message":"المراوح والمضخات شغالين؟"}'
+  -d '{"JWT":"your_jwt_here","conversation_id":"demo-conversation","message":"المراوح والمضخات شغالين؟"}'
 ```
 
 Ask a normal farming question:
@@ -118,7 +126,7 @@ Ask a normal farming question:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"conversation_id":"demo-conversation","message":"إيه أفضل وقت لري الطماطم؟"}'
+  -d '{"JWT":"your_jwt_here","conversation_id":"demo-conversation","message":"إيه أفضل وقت لري الطماطم؟"}'
 ```
 
 Example response:
