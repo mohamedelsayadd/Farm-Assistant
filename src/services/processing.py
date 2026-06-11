@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -76,6 +77,61 @@ def format_device_ids_response(api_response: Any) -> dict[str, str]:
             device_ids[name] = device_id
 
     return device_ids
+
+
+def format_sensor_reads_at_time_response(
+    api_response: Any,
+    start_time: str,
+    end_time: str,
+) -> dict[str, Any]:
+    start_at = _parse_cairo_timestamp(start_time)
+    end_at = _parse_cairo_timestamp(end_time)
+    if start_at is None or end_at is None:
+        return {
+            "timezone": "Africa/Cairo",
+            "readings": [],
+            "error": "start_time and end_time must be valid ISO 8601 timestamps.",
+        }
+
+    if end_at < start_at:
+        return {
+            "timezone": "Africa/Cairo",
+            "readings": [],
+            "error": "end_time must be greater than or equal to start_time.",
+        }
+
+    readings_by_time: dict[str, dict[str, Any]] = {}
+    if not isinstance(api_response, dict):
+        return {"timezone": "Africa/Cairo", "readings": []}
+
+    for sensor_name, sensor_payload in api_response.items():
+        if not isinstance(sensor_name, str) or not isinstance(sensor_payload, dict):
+            continue
+
+        labels = sensor_payload.get("labels")
+        values = sensor_payload.get("data")
+        if not isinstance(labels, list) or not isinstance(values, list):
+            continue
+
+        for label, value in zip(labels, values, strict=False):
+            timestamp = _parse_utc_timestamp(label)
+            if timestamp is None:
+                continue
+
+            cairo_timestamp = timestamp.astimezone(CAIRO_TIMEZONE)
+            if not start_at <= cairo_timestamp <= end_at:
+                continue
+
+            time_key = cairo_timestamp.isoformat(timespec="milliseconds")
+            readings_by_time.setdefault(time_key, {})[sensor_name] = _normalize_sensor_value(value)
+
+    return {
+        "timezone": "Africa/Cairo",
+        "readings": [
+            {"time": time_key, "sensors": sensors}
+            for time_key, sensors in sorted(readings_by_time.items())
+        ],
+    }
 
 
 def _build_sensors_metadata(device: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -170,6 +226,30 @@ def _parse_utc_timestamp(value: Any) -> datetime | None:
     if timestamp.tzinfo is None:
         return timestamp.replace(tzinfo=UTC)
     return timestamp.astimezone(UTC)
+
+
+def _parse_cairo_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized_value = value.replace("Z", "+00:00")
+    try:
+        timestamp = datetime.fromisoformat(normalized_value)
+    except ValueError:
+        return None
+
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=CAIRO_TIMEZONE)
+    return timestamp.astimezone(CAIRO_TIMEZONE)
+
+
+def _normalize_sensor_value(value: Any) -> Any:
+    if isinstance(value, dict) and isinstance(value.get("$numberDecimal"), str):
+        try:
+            return float(Decimal(value["$numberDecimal"]))
+        except (InvalidOperation, ValueError):
+            return value["$numberDecimal"]
+    return value
 
 
 def _to_cairo_timestamp(timestamp: datetime) -> str:

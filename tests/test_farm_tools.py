@@ -1,8 +1,12 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from services.farm_tools import get_device_id, get_farm_info
-from services.processing import format_device_ids_response, format_farm_info_response
+from services.farm_tools import get_device_id, get_farm_info, get_sensors_reads_at_time
+from services.processing import (
+    format_device_ids_response,
+    format_farm_info_response,
+    format_sensor_reads_at_time_response,
+)
 
 
 MOCK_API_RESPONSE = {
@@ -80,6 +84,33 @@ MOCK_API_RESPONSE = {
     "id": "farm-id",
 }
 
+MOCK_HISTORICAL_READS_RESPONSE = {
+    "CO2": {
+        "labels": [
+            "2026-05-28T22:00:00.000Z",
+            "2026-05-28T23:00:00.000Z",
+            "2026-05-29T00:00:00.000Z",
+        ],
+        "data": [
+            {"$numberDecimal": "535.0810439560439560439560439560439"},
+            {"$numberDecimal": "545.657967032967032967032967032967"},
+            {"$numberDecimal": "572.1923076923076923076923076923077"},
+        ],
+    },
+    "ambient_temp": {
+        "labels": [
+            "2026-05-28T22:00:00.000Z",
+            "2026-05-28T23:00:00.000Z",
+            "2026-05-29T00:00:00.000Z",
+        ],
+        "data": [
+            {"$numberDecimal": "19.58885989010989010989010989010989"},
+            {"$numberDecimal": "19.12501373626373626373626373626374"},
+            {"$numberDecimal": "18.45662087912087912087912087912088"},
+        ],
+    },
+}
+
 
 @pytest.mark.asyncio
 async def test_get_farm_info_returns_structured_farm_data() -> None:
@@ -107,6 +138,52 @@ async def test_get_device_id_returns_device_name_id_mapping() -> None:
 
     assert device_ids == {"ReNile Environmental Station": "farm-id"}
     mock_response.raise_for_status.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_sensors_reads_at_time_calls_data_api_and_returns_processed_readings() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_HISTORICAL_READS_RESPONSE
+    with patch("services.farm_tools.httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_response
+
+        readings = await get_sensors_reads_at_time(
+            "test-jwt",
+            device_id="device-1",
+            start_time="2026-05-29T01:00:00+03:00",
+            end_time="2026-05-29T02:00:00+03:00",
+            data_type="hour",
+        )
+
+    mock_get.assert_awaited_once_with(
+        "https://renile-iot.com/api/v1/data/",
+        headers={"Authorization": "JWT test-jwt"},
+        params={
+            "device_id": "device-1",
+            "start_time": "2026-05-29T01:00:00+03:00",
+            "data_type": "hour",
+        },
+    )
+    mock_response.raise_for_status.assert_called_once()
+    assert readings == {
+        "timezone": "Africa/Cairo",
+        "readings": [
+            {
+                "time": "2026-05-29T01:00:00.000+03:00",
+                "sensors": {
+                    "CO2": 535.0810439560439,
+                    "ambient_temp": 19.58885989010989,
+                },
+            },
+            {
+                "time": "2026-05-29T02:00:00.000+03:00",
+                "sensors": {
+                    "CO2": 545.657967032967,
+                    "ambient_temp": 19.125013736263735,
+                },
+            },
+        ],
+    }
 
 
 def test_format_farm_info_response_merges_sensor_metadata_with_latest_readings() -> None:
@@ -265,4 +342,44 @@ def test_format_device_ids_response_maps_device_names_to_ids() -> None:
     assert device_ids == {
         "Media Monitoring System": "63590cc1d39b8a2f99239130",
         "Greenhouse Climate Control": "63951516d034b209322a0fe6",
+    }
+
+
+def test_format_sensor_reads_at_time_response_converts_to_cairo_and_clips_by_end_time() -> None:
+    readings = format_sensor_reads_at_time_response(
+        MOCK_HISTORICAL_READS_RESPONSE,
+        start_time="2026-05-29T01:00:00+03:00",
+        end_time="2026-05-29T02:00:00+03:00",
+    )
+
+    assert readings["timezone"] == "Africa/Cairo"
+    assert readings["readings"] == [
+        {
+            "time": "2026-05-29T01:00:00.000+03:00",
+            "sensors": {
+                "CO2": 535.0810439560439,
+                "ambient_temp": 19.58885989010989,
+            },
+        },
+        {
+            "time": "2026-05-29T02:00:00.000+03:00",
+            "sensors": {
+                "CO2": 545.657967032967,
+                "ambient_temp": 19.125013736263735,
+            },
+        },
+    ]
+
+
+def test_format_sensor_reads_at_time_response_rejects_invalid_time_range() -> None:
+    readings = format_sensor_reads_at_time_response(
+        MOCK_HISTORICAL_READS_RESPONSE,
+        start_time="2026-05-29T03:00:00+03:00",
+        end_time="2026-05-29T02:00:00+03:00",
+    )
+
+    assert readings == {
+        "timezone": "Africa/Cairo",
+        "readings": [],
+        "error": "end_time must be greater than or equal to start_time.",
     }

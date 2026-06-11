@@ -40,8 +40,40 @@ TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sensors_reads_at_time",
+            "description": "Get historical sensor readings for a specific device and time range. Use only after calling get_device_id and selecting the matching device_id.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "Device ID selected from get_device_id results.",
+                    },
+                    "start_time": {
+                        "type": "string",
+                        "description": "Start time requested by the user in ISO 8601 format.",
+                    },
+                    "end_time": {
+                        "type": "string",
+                        "description": "End time requested by the user in ISO 8601 format. Used to clip returned data.",
+                    },
+                    "data_type": {
+                        "type": "string",
+                        "enum": ["day", "hour"],
+                        "description": "Use day for daily readings and hour for hourly readings.",
+                    },
+                },
+                "required": ["device_id", "start_time", "end_time", "data_type"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 logger = logging.getLogger(__name__)
+MAX_TOOL_CALL_ROUNDS = 3
 DEFAULT_INPUT_GUARDRAIL_BLOCK_MESSAGE = (
     "لا أستطيع معالجة هذا الطلب لأنه قد يحتوي على تعليمات غير آمنة أو محاولة للتلاعب بالنظام."
 )
@@ -75,66 +107,104 @@ class ChatService:
 
         messages = await self._build_messages(conversation_id, user_message)
 
-        try:
-            first_response = await self.llm_client.create_chat_completion(
-                messages=messages,
-                tools=TOOLS,
-                tool_choice="auto",
-            )
-        except Exception:
-            logger.exception("chat_initial_llm_call_failed message_length=%s", len(user_message))
-            raise
+        total_tool_calls = 0
+        answer = "لا أستطيع تقديم إجابة واضحة في الوقت الحالي."
+        for tool_round in range(MAX_TOOL_CALL_ROUNDS):
+            try:
+                response = await self.llm_client.create_chat_completion(
+                    messages=messages,
+                    tools=TOOLS,
+                    tool_choice="auto",
+                )
+            except Exception:
+                logger.exception(
+                    "chat_llm_call_failed message_length=%s tool_round=%s",
+                    len(user_message),
+                    tool_round,
+                )
+                raise
 
-        assistant_message = first_response.choices[0].message
-        tool_calls = assistant_message.tool_calls or []
+            assistant_message = response.choices[0].message
+            tool_calls = assistant_message.tool_calls or []
 
-        if not tool_calls:
-            answer = assistant_message.content or "لا أستطيع تقديم إجابة واضحة في الوقت الحالي."
-            await self._save_exchange(conversation_id, user_message, answer)
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.info(
-                "chat_completed tool_calls=0 answer_length=%s duration_ms=%.2f",
-                len(answer),
-                duration_ms,
-            )
-            return answer
+            if not tool_calls:
+                answer = assistant_message.content or answer
+                break
 
-        logger.info("chat_tool_calls_requested count=%s", len(tool_calls))
-        messages.append(assistant_message.model_dump(exclude_none=True))
+            total_tool_calls += len(tool_calls)
+            logger.info("chat_tool_calls_requested count=%s round=%s", len(tool_calls), tool_round + 1)
+            messages.append(assistant_message.model_dump(exclude_none=True))
 
-        for tool_call in tool_calls:
-            logger.info("chat_tool_call_started tool_call_id=%s tool_name=%s", tool_call.id, tool_call.function.name)
-            tool_result = await execute_tool(JWT=JWT,
-                                              name=tool_call.function.name)
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": json.dumps(tool_result, ensure_ascii=False),
-                }
-            )
-            logger.info("chat_tool_call_completed tool_call_id=%s tool_name=%s", tool_call.id, tool_call.function.name)
+            for tool_call in tool_calls:
+                logger.info("chat_tool_call_started tool_call_id=%s tool_name=%s", tool_call.id, tool_call.function.name)
+                tool_arguments = self._parse_tool_arguments(tool_call)
+                logger.info(
+                    "chat_tool_call_arguments tool_call_id=%s tool_name=%s arguments=%s",
+                    tool_call.id,
+                    tool_call.function.name,
+                    json.dumps(tool_arguments, ensure_ascii=False) if isinstance(tool_arguments, dict) else tool_arguments,
+                )
+                if isinstance(tool_arguments, dict):
+                    tool_result = await execute_tool(
+                        JWT=JWT,
+                        name=tool_call.function.name,
+                        arguments=tool_arguments,
+                    )
+                else:
+                    tool_result = {"error": tool_arguments}
+                tool_result_content = json.dumps(tool_result, ensure_ascii=False)
+                logger.info(
+                    "chat_tool_call_result_for_llm tool_call_id=%s tool_name=%s result=%s",
+                    tool_call.id,
+                    tool_call.function.name,
+                    tool_result_content,
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result_content,
+                    }
+                )
+                logger.info("chat_tool_call_completed tool_call_id=%s tool_name=%s", tool_call.id, tool_call.function.name)
+        else:
+            try:
+                final_response = await self.llm_client.create_chat_completion(
+                    messages=messages,
+                    tools=TOOLS,
+                    tool_choice="none",
+                )
+            except Exception:
+                logger.exception("chat_final_llm_call_failed tool_call_count=%s", total_tool_calls)
+                raise
+            answer = final_response.choices[0].message.content or answer
 
-        try:
-            final_response = await self.llm_client.create_chat_completion(
-                messages=messages,
-                tools=TOOLS,
-                tool_choice="none",
-            )
-        except Exception:
-            logger.exception("chat_final_llm_call_failed tool_call_count=%s", len(tool_calls))
-            raise
-
-        answer = final_response.choices[0].message.content or "لا أستطيع تقديم إجابة واضحة في الوقت الحالي."
         await self._save_exchange(conversation_id, user_message, answer)
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "chat_completed tool_calls=%s answer_length=%s duration_ms=%.2f",
-            len(tool_calls),
+            total_tool_calls,
             len(answer),
             duration_ms,
         )
         return answer
+
+    def _parse_tool_arguments(self, tool_call: Any) -> dict[str, Any] | str:
+        raw_arguments = getattr(tool_call.function, "arguments", None)
+        if raw_arguments in (None, ""):
+            return {}
+
+        try:
+            parsed_arguments = json.loads(raw_arguments)
+        except json.JSONDecodeError:
+            logger.warning("chat_tool_arguments_invalid_json tool_name=%s", tool_call.function.name)
+            return "Tool arguments must be valid JSON."
+
+        if not isinstance(parsed_arguments, dict):
+            logger.warning("chat_tool_arguments_invalid_type tool_name=%s", tool_call.function.name)
+            return "Tool arguments must be a JSON object."
+
+        return parsed_arguments
 
     async def _build_messages(self, conversation_id: str, user_message: str) -> list[dict[str, Any]]:
         if self.chat_memory is None:

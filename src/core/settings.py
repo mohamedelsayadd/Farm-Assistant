@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     DASHSCOPE_BASE_URL: str = Field(...)
     MODEL_NAME: str = Field(...)
     RENILE_DEVICES_API: str = Field(default="https://renile-iot.com/api/users/devices/")
+    RENILE_DATA_API: str = Field(default="https://renile-iot.com/api/v1/data/")
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
     CHAT_MEMORY_TTL_SECONDS: int = Field(default=3600, gt=0)
     CHAT_MEMORY_MAX_HISTORY_MESSAGES: int = Field(default=12, gt=0)

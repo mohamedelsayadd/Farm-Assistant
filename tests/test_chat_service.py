@@ -100,12 +100,19 @@ def make_response(message: FakeAssistantMessage) -> Any:
 def test_chat_service_exposes_current_farm_tools() -> None:
     tool_names = [tool["function"]["name"] for tool in TOOLS]
 
-    assert tool_names == ["get_farm_info", "get_device_id"]
+    assert tool_names == ["get_farm_info", "get_device_id", "get_sensors_reads_at_time"]
     assert TOOLS[1]["function"]["parameters"] == {
         "type": "object",
         "properties": {},
         "additionalProperties": False,
     }
+    assert TOOLS[2]["function"]["parameters"]["required"] == [
+        "device_id",
+        "start_time",
+        "end_time",
+        "data_type",
+    ]
+    assert TOOLS[2]["function"]["parameters"]["properties"]["data_type"]["enum"] == ["day", "hour"]
 
 
 @pytest.mark.asyncio
@@ -215,7 +222,7 @@ async def test_chat_service_executes_tool_then_requests_final_answer() -> None:
 
     assert answer == "درجة الحرارة الحالية 27.4 درجة."
     assert len(llm_client.requests) == 2
-    assert llm_client.requests[1]["tool_choice"] == "none"
+    assert llm_client.requests[1]["tool_choice"] == "auto"
     assert llm_client.requests[1]["messages"][-1]["role"] == "tool"
     assert chat_memory.saved_exchanges == [
         {
@@ -224,6 +231,123 @@ async def test_chat_service_executes_tool_then_requests_final_answer() -> None:
             "assistant_response": "درجة الحرارة الحالية 27.4 درجة.",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_chat_service_supports_multiple_tool_rounds() -> None:
+    device_tool_call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_device_id", arguments="{}"),
+    )
+    reads_tool_call = SimpleNamespace(
+        id="call_2",
+        function=SimpleNamespace(
+            name="get_sensors_reads_at_time",
+            arguments=(
+                '{"device_id":"device-1","start_time":"2026-05-29T01:00:00+03:00",'
+                '"end_time":"2026-05-29T02:00:00+03:00","data_type":"hour"}'
+            ),
+        ),
+    )
+    llm_client = FakeLLMClient(
+        [
+            make_response(FakeAssistantMessage(None, [device_tool_call])),
+            make_response(FakeAssistantMessage(None, [reads_tool_call])),
+            make_response(FakeAssistantMessage("كانت قراءة CO2 هي 535.")),
+        ]
+    )
+    service = ChatService(llm_client)
+
+    with patch("services.chat_service.execute_tool", new_callable=AsyncMock) as mock_exec:
+        mock_exec.side_effect = [
+            {"Greenhouse Climate Control": "device-1"},
+            {"timezone": "Africa/Cairo", "readings": []},
+        ]
+
+        answer = await service.get_answer("test-jwt", "conversation-1", "قراءة CO2 امبارح؟")
+
+    assert answer == "كانت قراءة CO2 هي 535."
+    assert len(llm_client.requests) == 3
+    assert mock_exec.await_count == 2
+    assert mock_exec.await_args_list[0].kwargs == {
+        "JWT": "test-jwt",
+        "name": "get_device_id",
+        "arguments": {},
+    }
+    assert mock_exec.await_args_list[1].kwargs == {
+        "JWT": "test-jwt",
+        "name": "get_sensors_reads_at_time",
+        "arguments": {
+            "device_id": "device-1",
+            "start_time": "2026-05-29T01:00:00+03:00",
+            "end_time": "2026-05-29T02:00:00+03:00",
+            "data_type": "hour",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_chat_service_passes_tool_arguments_to_executor() -> None:
+    tool_call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(
+            name="get_sensors_reads_at_time",
+            arguments=(
+                '{"device_id":"device-1","start_time":"2026-05-29T01:00:00+03:00",'
+                '"end_time":"2026-05-29T02:00:00+03:00","data_type":"hour"}'
+            ),
+        ),
+    )
+    llm_client = FakeLLMClient(
+        [
+            make_response(FakeAssistantMessage(None, [tool_call])),
+            make_response(FakeAssistantMessage("كانت الحرارة 19.1 درجة.")),
+        ]
+    )
+    service = ChatService(llm_client)
+
+    with patch("services.chat_service.execute_tool", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = {"timezone": "Africa/Cairo", "readings": []}
+
+        answer = await service.get_answer("test-jwt", "conversation-1", "قراءة الحرارة الساعة 2؟")
+
+    assert answer == "كانت الحرارة 19.1 درجة."
+    mock_exec.assert_awaited_once_with(
+        JWT="test-jwt",
+        name="get_sensors_reads_at_time",
+        arguments={
+            "device_id": "device-1",
+            "start_time": "2026-05-29T01:00:00+03:00",
+            "end_time": "2026-05-29T02:00:00+03:00",
+            "data_type": "hour",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_service_returns_tool_error_for_invalid_tool_arguments() -> None:
+    tool_call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_sensors_reads_at_time", arguments="not-json"),
+    )
+    llm_client = FakeLLMClient(
+        [
+            make_response(FakeAssistantMessage(None, [tool_call])),
+            make_response(FakeAssistantMessage("تعذر قراءة معاملات الأداة.")),
+        ]
+    )
+    service = ChatService(llm_client)
+
+    with patch("services.chat_service.execute_tool", new_callable=AsyncMock) as mock_exec:
+        answer = await service.get_answer("test-jwt", "conversation-1", "قراءة قديمة؟")
+
+    assert answer == "تعذر قراءة معاملات الأداة."
+    mock_exec.assert_not_awaited()
+    assert llm_client.requests[1]["messages"][-1] == {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": '{"error": "Tool arguments must be valid JSON."}',
+    }
 
 
 def test_chat_service_sends_history_before_current_message() -> None:
