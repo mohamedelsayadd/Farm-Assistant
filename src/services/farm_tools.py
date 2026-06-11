@@ -1,6 +1,8 @@
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,6 +11,8 @@ from core.settings import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+CAIRO_TIMEZONE = ZoneInfo("Africa/Cairo")
+LATEST_READ_YEAR = 2026
 
 class EmployeeOut(BaseModel):
     user_id: str | None = None
@@ -121,26 +125,58 @@ def _format_readings(raw_readings: Any, sensors_meta: dict[str, dict[str, Any]])
     if not isinstance(raw_readings, list):
         return []
 
-    readings: list[ReadingOut] = []
+    latest_readings: dict[str, tuple[dict[str, Any], datetime]] = {}
     for reading in raw_readings:
         if not isinstance(reading, dict):
             continue
 
         name = reading.get("name")
-        meta = sensors_meta.get(name, {})
-        readings.append(
-            ReadingOut(
-                name=name,
-                reading=reading.get("reading"),
-                createdAt=reading.get("createdAt"),
-                unit=meta.get("unit"),
-                label_ar=meta.get("label_ar"),
-                lower_limit=meta.get("lower_limit"),
-                upper_limit=meta.get("upper_limit"),
-            )
-        )
+        if not isinstance(name, str) or not name:
+            continue
 
-    return readings
+        created_at = _parse_utc_timestamp(reading.get("createdAt"))
+        if created_at is None or created_at.year != LATEST_READ_YEAR:
+            continue
+
+        previous = latest_readings.get(name)
+        if previous is None or created_at > previous[1]:
+            latest_readings[name] = (reading, created_at)
+
+    return [
+        _format_reading(reading, created_at, sensors_meta.get(name, {}))
+        for name, (reading, created_at) in latest_readings.items()
+    ]
+
+
+def _format_reading(reading: dict[str, Any], created_at: datetime, meta: dict[str, Any]) -> ReadingOut:
+    return ReadingOut(
+        name=reading.get("name"),
+        reading=reading.get("reading"),
+        createdAt=_to_cairo_timestamp(created_at),
+        unit=meta.get("unit"),
+        label_ar=meta.get("label_ar"),
+        lower_limit=meta.get("lower_limit"),
+        upper_limit=meta.get("upper_limit"),
+    )
+
+
+def _parse_utc_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized_value = value.replace("Z", "+00:00")
+    try:
+        timestamp = datetime.fromisoformat(normalized_value)
+    except ValueError:
+        return None
+
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(UTC)
+
+
+def _to_cairo_timestamp(timestamp: datetime) -> str:
+    return timestamp.astimezone(CAIRO_TIMEZONE).isoformat(timespec="milliseconds")
 
 
 def _get_nested_value(data: dict[str, Any], *keys: str) -> Any:

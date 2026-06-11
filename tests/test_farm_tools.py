@@ -105,13 +105,14 @@ def test_format_farm_info_response_merges_sensor_metadata_with_latest_readings()
     assert so2 == {
         "name": "SO2",
         "value": 9,
-        "created_at": "2026-06-09T16:25:53.654Z",
+        "created_at": "2026-06-09T19:25:53.654+03:00",
         "unit": "PPB",
         "label_ar": "ثاني اكسيد الكبريت",
         "lower_limit": 0,
         "upper_limit": 2000,
     }
     assert ambient_temp["value"] == 68
+    assert ambient_temp["created_at"] == "2026-06-09T14:23:23.437+03:00"
     assert ambient_temp["label_ar"] == "درجه حراره الجو"
     assert ambient_temp["lower_limit"] == -40
     assert ambient_temp["upper_limit"] == 60
@@ -151,7 +152,7 @@ def test_format_farm_info_response_omits_configured_sensors_without_readings() -
     assert "Wind_Speed" not in reading_names
 
 
-def test_format_farm_info_response_handles_reading_without_sensor_metadata() -> None:
+def test_format_farm_info_response_omits_readings_outside_2026() -> None:
     response = {
         **MOCK_API_RESPONSE,
         "lastRead": [
@@ -163,17 +164,70 @@ def test_format_farm_info_response_handles_reading_without_sensor_metadata() -> 
         ],
     }
 
+    readings = _format_farm_info_response(response)["devices"][0]["readings"]
+
+    assert readings == []
+
+
+def test_format_farm_info_response_handles_reading_without_sensor_metadata() -> None:
+    response = {
+        **MOCK_API_RESPONSE,
+        "lastRead": [
+            {
+                "name": "Battery_level",
+                "reading": 99,
+                "createdAt": "2026-12-13T13:59:55.194Z",
+            }
+        ],
+    }
+
     reading = _format_farm_info_response(response)["devices"][0]["readings"][0]
 
     assert reading == {
         "name": "Battery_level",
         "value": 99,
-        "created_at": "2022-12-13T13:59:55.194Z",
+        "created_at": "2026-12-13T15:59:55.194+02:00",
         "unit": None,
         "label_ar": None,
         "lower_limit": None,
         "upper_limit": None,
     }
+
+
+def test_format_farm_info_response_keeps_latest_2026_reading_per_sensor() -> None:
+    response = {
+        **MOCK_API_RESPONSE,
+        "lastRead": [
+            {
+                "name": "SO2",
+                "reading": 9,
+                "createdAt": "2026-06-09T16:25:53.654Z",
+            },
+            {
+                "name": "SO2",
+                "reading": 12,
+                "createdAt": "2026-06-09T18:25:53.654Z",
+            },
+            {
+                "name": "SO2",
+                "reading": 20,
+                "createdAt": "2025-06-09T20:25:53.654Z",
+            },
+            {
+                "name": "ambient_temp",
+                "reading": 68,
+                "createdAt": "2026-06-09T11:23:23.437Z",
+            },
+        ],
+    }
+
+    readings = _format_farm_info_response(response)["devices"][0]["readings"]
+
+    assert readings[0]["name"] == "SO2"
+    assert readings[0]["value"] == 12
+    assert readings[0]["created_at"] == "2026-06-09T21:25:53.654+03:00"
+    assert readings[1]["name"] == "ambient_temp"
+    assert len(readings) == 2
 
 
 def test_format_farm_info_response_handles_single_object_and_list_responses() -> None:
