@@ -31,8 +31,8 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "get_devices_status",
-            "description": "Get current mock status for farm devices: fans, pumps, and lights.",
+            "name": "get_device_id",
+            "description": "Get all farm device names mapped to their device IDs. Use this when the user needs a device ID or asks for something requiring a device ID from a device name.",
             "parameters": {
                 "type": "object",
                 "properties": {},

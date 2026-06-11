@@ -236,3 +236,6 @@ htmlcov/
 .venv/
 
 devices.json
+
+response.json
+test2.ipynb

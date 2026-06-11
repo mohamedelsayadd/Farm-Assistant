@@ -1,7 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from services.farm_tools import _format_farm_info_response, get_devices_status, get_farm_info
+from services.farm_tools import get_device_id, get_farm_info
+from services.processing import format_device_ids_response, format_farm_info_response
 
 
 MOCK_API_RESPONSE = {
@@ -95,8 +96,21 @@ async def test_get_farm_info_returns_structured_farm_data() -> None:
     mock_response.raise_for_status.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_get_device_id_returns_device_name_id_mapping() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = [MOCK_API_RESPONSE]
+    with patch("services.farm_tools.httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_response
+
+        device_ids = await get_device_id("test-jwt")
+
+    assert device_ids == {"ReNile Environmental Station": "farm-id"}
+    mock_response.raise_for_status.assert_called_once()
+
+
 def test_format_farm_info_response_merges_sensor_metadata_with_latest_readings() -> None:
-    farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
+    farm_info = format_farm_info_response(MOCK_API_RESPONSE)
 
     readings = farm_info["devices"][0]["readings"]
     so2 = readings[0]
@@ -119,7 +133,7 @@ def test_format_farm_info_response_merges_sensor_metadata_with_latest_readings()
 
 
 def test_format_farm_info_response_maps_employees() -> None:
-    farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
+    farm_info = format_farm_info_response(MOCK_API_RESPONSE)
 
     assert farm_info["devices"][0]["employees"] == [
         {
@@ -130,7 +144,7 @@ def test_format_farm_info_response_maps_employees() -> None:
 
 
 def test_format_farm_info_response_omits_internal_and_noisy_fields() -> None:
-    farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
+    farm_info = format_farm_info_response(MOCK_API_RESPONSE)
     device = farm_info["devices"][0]
     reading = device["readings"][0]
 
@@ -145,7 +159,7 @@ def test_format_farm_info_response_omits_internal_and_noisy_fields() -> None:
 
 
 def test_format_farm_info_response_omits_configured_sensors_without_readings() -> None:
-    farm_info = _format_farm_info_response(MOCK_API_RESPONSE)
+    farm_info = format_farm_info_response(MOCK_API_RESPONSE)
 
     reading_names = {reading["name"] for reading in farm_info["devices"][0]["readings"]}
 
@@ -164,7 +178,7 @@ def test_format_farm_info_response_omits_readings_outside_2026() -> None:
         ],
     }
 
-    readings = _format_farm_info_response(response)["devices"][0]["readings"]
+    readings = format_farm_info_response(response)["devices"][0]["readings"]
 
     assert readings == []
 
@@ -181,7 +195,7 @@ def test_format_farm_info_response_handles_reading_without_sensor_metadata() -> 
         ],
     }
 
-    reading = _format_farm_info_response(response)["devices"][0]["readings"][0]
+    reading = format_farm_info_response(response)["devices"][0]["readings"][0]
 
     assert reading == {
         "name": "Battery_level",
@@ -221,7 +235,7 @@ def test_format_farm_info_response_keeps_latest_2026_reading_per_sensor() -> Non
         ],
     }
 
-    readings = _format_farm_info_response(response)["devices"][0]["readings"]
+    readings = format_farm_info_response(response)["devices"][0]["readings"]
 
     assert readings[0]["name"] == "SO2"
     assert readings[0]["value"] == 12
@@ -231,13 +245,24 @@ def test_format_farm_info_response_keeps_latest_2026_reading_per_sensor() -> Non
 
 
 def test_format_farm_info_response_handles_single_object_and_list_responses() -> None:
-    single_response = _format_farm_info_response(MOCK_API_RESPONSE)
-    list_response = _format_farm_info_response([MOCK_API_RESPONSE])
+    single_response = format_farm_info_response(MOCK_API_RESPONSE)
+    list_response = format_farm_info_response([MOCK_API_RESPONSE])
 
     assert single_response == list_response
 
 
-def test_get_devices_status_returns_expected_mock_fields() -> None:
-    status = get_devices_status()
+def test_format_device_ids_response_maps_device_names_to_ids() -> None:
+    device_ids = format_device_ids_response(
+        [
+            {"name": "Media Monitoring System", "id": "63590cc1d39b8a2f99239130"},
+            {"name": "Greenhouse Climate Control", "id": "63951516d034b209322a0fe6"},
+            {"name": "Ignored Missing ID"},
+            {"id": "ignored-missing-name"},
+            "ignored-invalid-device",
+        ]
+    )
 
-    assert set(status) == {"fans", "pumps", "lights"}
+    assert device_ids == {
+        "Media Monitoring System": "63590cc1d39b8a2f99239130",
+        "Greenhouse Climate Control": "63951516d034b209322a0fe6",
+    }

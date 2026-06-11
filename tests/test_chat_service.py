@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from services.chat_prompts import SYSTEM_PROMPT
-from services.chat_service import ChatService
+from services.chat_service import TOOLS, ChatService
 from services.input_guardrail.interface import GuardrailResult
 from services.memory.providers.redis import RedisChatMemory
 
@@ -95,6 +95,17 @@ class FakeRedisClient:
 
 def make_response(message: FakeAssistantMessage) -> Any:
     return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
+def test_chat_service_exposes_current_farm_tools() -> None:
+    tool_names = [tool["function"]["name"] for tool in TOOLS]
+
+    assert tool_names == ["get_farm_info", "get_device_id"]
+    assert TOOLS[1]["function"]["parameters"] == {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }
 
 
 @pytest.mark.asyncio
