@@ -24,6 +24,7 @@ async def get_farm_info(JWT: str) -> dict[str, Any]:
             headers={
                 "Authorization": f"JWT {JWT}",
             },
+            timeout=settings.API_TIMEOUT_SECONDS,
         )
 
     response.raise_for_status()
@@ -44,6 +45,7 @@ async def get_device_id(JWT: str) -> dict[str, str]:
             headers={
                 "Authorization": f"JWT {JWT}",
             },
+            timeout=settings.API_TIMEOUT_SECONDS,
         )
 
     response.raise_for_status()
@@ -78,6 +80,7 @@ async def get_sensors_reads_at_time(
                 "start_time": start_time,
                 "data_type": data_type,
             },
+            timeout=settings.API_TIMEOUT_SECONDS,
         )
 
     response.raise_for_status()

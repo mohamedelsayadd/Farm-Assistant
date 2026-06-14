@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -287,7 +288,7 @@ async def test_chat_service_supports_multiple_tool_rounds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_service_passes_tool_arguments_to_executor() -> None:
+async def test_chat_service_passes_tool_arguments_to_executor(caplog: pytest.LogCaptureFixture) -> None:
     tool_call = SimpleNamespace(
         id="call_1",
         function=SimpleNamespace(
@@ -306,6 +307,7 @@ async def test_chat_service_passes_tool_arguments_to_executor() -> None:
     )
     service = ChatService(llm_client)
 
+    caplog.set_level(logging.INFO, logger="services.chat_service")
     with patch("services.chat_service.execute_tool", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = {"timezone": "Africa/Cairo", "readings": []}
 
@@ -322,6 +324,9 @@ async def test_chat_service_passes_tool_arguments_to_executor() -> None:
             "data_type": "hour",
         },
     )
+    assert "chat_model_tool_calls round=1" in caplog.text
+    assert '"tool_name": "get_sensors_reads_at_time"' in caplog.text
+    assert '"arguments": "{\\"device_id\\":\\"device-1\\"' in caplog.text
 
 
 @pytest.mark.asyncio

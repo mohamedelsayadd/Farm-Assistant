@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
     CHAT_MEMORY_TTL_SECONDS: int = Field(default=3600, gt=0)
     CHAT_MEMORY_MAX_HISTORY_MESSAGES: int = Field(default=12, gt=0)
+    MAX_TOOL_CALL_ROUNDS: int = Field(default=3, gt=0)
+    API_TIMEOUT_SECONDS: int = Field(default=15, gt=0)
     INPUT_GUARDRAIL_ENABLED: bool = Field(default=True)
     INPUT_GUARDRAIL_PROVIDER: str = Field(default="huggingface")
     INPUT_GUARDRAIL_MODEL_NAME: str = Field(default="NAMAA-Space/Ara-Prompt-Guard_V0")
