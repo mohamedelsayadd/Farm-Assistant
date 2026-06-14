@@ -6,8 +6,8 @@ import httpx
 
 from core.settings import get_settings
 from services.processing import (
+    format_devices_last_reads_response,
     format_device_ids_response,
-    format_farm_info_response,
     format_sensor_reads_at_time_response,
 )
 
@@ -15,8 +15,8 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def get_farm_info(JWT: str) -> dict[str, Any]:
-    logger.info("farm_readings_tool_started")
+async def get_devices_last_reads(JWT: str) -> list[dict[str, dict[str, dict[str, Any]]]]:
+    logger.info("devices_last_reads_tool_started")
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
@@ -28,9 +28,9 @@ async def get_farm_info(JWT: str) -> dict[str, Any]:
         )
 
     response.raise_for_status()
-    formatted_response = format_farm_info_response(response.json())
+    formatted_response = format_devices_last_reads_response(response.json())
     logger.info(
-        "farm_readings_tool_processed_response response=%s",
+        "devices_last_reads_tool_processed_response response=%s",
         json.dumps(formatted_response, ensure_ascii=False),
     )
     return formatted_response
@@ -96,10 +96,10 @@ async def get_sensors_reads_at_time(
     return formatted_response
 
 
-async def execute_tool(JWT: str, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+async def execute_tool(JWT: str, name: str, arguments: dict[str, Any] | None = None) -> Any:
     logger.info("tool_execution_requested tool_name=%s", name)
     tools = {
-        "get_farm_info": get_farm_info,
+        "get_devices_last_reads": get_devices_last_reads,
         "get_device_id": get_device_id,
         "get_sensors_reads_at_time": get_sensors_reads_at_time,
     }

@@ -25,8 +25,8 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "get_farm_info",
-            "description": "Get cleaned farm devices data including farm name, device names, employees, latest sensor readings, units, thresholds, Arabic labels, and reading timestamps.",
+            "name": "get_devices_last_reads",
+            "description": "Return the last reads of each sensor in each device, with its Africa/Cairo timestamp and configured lower/upper limits.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -201,7 +201,7 @@ class ChatService:
             "content": tool_result_content,
         }
 
-    async def _execute_tool_call(self, JWT: str, tool_call: Any) -> dict[str, Any]:
+    async def _execute_tool_call(self, JWT: str, tool_call: Any) -> Any:
         tool_arguments = self._parse_tool_arguments(tool_call)
         logger.info(
             "chat_tool_call_arguments tool_call_id=%s tool_name=%s arguments=%s",

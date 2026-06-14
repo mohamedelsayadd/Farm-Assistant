@@ -1,8 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from services.farm_tools import get_device_id, get_farm_info, get_sensors_reads_at_time
+from services.farm_tools import get_device_id, get_devices_last_reads, get_sensors_reads_at_time
 from services.processing import (
+    format_devices_last_reads_response,
     format_device_ids_response,
     format_farm_info_response,
     format_sensor_reads_at_time_response,
@@ -113,17 +114,32 @@ MOCK_HISTORICAL_READS_RESPONSE = {
 
 
 @pytest.mark.asyncio
-async def test_get_farm_info_returns_structured_farm_data() -> None:
+async def test_get_devices_last_reads_returns_simplified_last_readings() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = [MOCK_API_RESPONSE]
     with patch("services.farm_tools.httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
 
-        farm_info = await get_farm_info("test-jwt")
+        last_reads = await get_devices_last_reads("test-jwt")
 
-    assert farm_info["farm"] == "Zayed Environmental Station"
-    assert farm_info["devices"][0]["device_id"] == "farm-object-id"
-    assert farm_info["devices"][0]["device_name"] == "ReNile Environmental Station"
+    assert last_reads == [
+        {
+            "ReNile Environmental Station": {
+                "SO2": {
+                    "value": 9,
+                    "last_read": "2026-06-09T19:25:53.654+03:00",
+                    "lower_limit": 0,
+                    "upper_limit": 2000,
+                },
+                "ambient_temp": {
+                    "value": 68,
+                    "last_read": "2026-06-09T14:23:23.437+03:00",
+                    "lower_limit": -40,
+                    "upper_limit": 60,
+                },
+            }
+        }
+    ]
     mock_response.raise_for_status.assert_called_once()
 
 
@@ -163,6 +179,7 @@ async def test_get_sensors_reads_at_time_calls_data_api_and_returns_processed_re
             "start_time": "2026-05-29T01:00:00+03:00",
             "data_type": "hour",
         },
+        timeout=30,
     )
     mock_response.raise_for_status.assert_called_once()
     assert readings == {
@@ -207,6 +224,75 @@ def test_format_farm_info_response_merges_sensor_metadata_with_latest_readings()
     assert ambient_temp["label_ar"] == "درجه حراره الجو"
     assert ambient_temp["lower_limit"] == -40
     assert ambient_temp["upper_limit"] == 60
+
+
+def test_format_devices_last_reads_response_returns_simple_device_sensor_context() -> None:
+    last_reads = format_devices_last_reads_response([MOCK_API_RESPONSE, "ignored-invalid-device"])
+
+    assert last_reads == [
+        {
+            "ReNile Environmental Station": {
+                "SO2": {
+                    "value": 9,
+                    "last_read": "2026-06-09T19:25:53.654+03:00",
+                    "lower_limit": 0,
+                    "upper_limit": 2000,
+                },
+                "ambient_temp": {
+                    "value": 68,
+                    "last_read": "2026-06-09T14:23:23.437+03:00",
+                    "lower_limit": -40,
+                    "upper_limit": 60,
+                },
+            }
+        }
+    ]
+
+
+def test_format_devices_last_reads_response_handles_invalid_timestamp() -> None:
+    response = {
+        **MOCK_API_RESPONSE,
+        "lastRead": [{"name": "SO2", "reading": 9, "createdAt": "invalid-time"}],
+    }
+
+    assert format_devices_last_reads_response(response) == [
+        {
+            "ReNile Environmental Station": {
+                "SO2": {
+                    "value": 9,
+                    "last_read": None,
+                    "lower_limit": 0,
+                    "upper_limit": 2000,
+                }
+            }
+        }
+    ]
+
+
+def test_format_devices_last_reads_response_uses_none_for_missing_limits() -> None:
+    response = {
+        **MOCK_API_RESPONSE,
+        "lastRead": [
+            {
+                "name": "Battery_level",
+                "reading": 99,
+                "createdAt": "2026-12-13T13:59:55.194Z",
+            }
+        ],
+    }
+
+    assert format_devices_last_reads_response(response) == [
+        {
+            "ReNile Environmental Station": {
+                "Battery_level": {
+                    "value": 99,
+                    "last_read": "2026-12-13T15:59:55.194+02:00",
+                    "lower_limit": None,
+                    "upper_limit": None,
+                }
+            }
+        }
+    ]
 
 
 def test_format_farm_info_response_maps_employees() -> None:

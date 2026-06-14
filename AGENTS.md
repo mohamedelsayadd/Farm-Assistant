@@ -22,7 +22,7 @@
 - Chat requests require body fields `JWT`, `conversation_id`, and `message`; memory is isolated by `conversation_id`, while `JWT` is passed to farm data tools.
 - `ChatService.get_answer(JWT, conversation_id, user_message)` checks the input guardrail before memory/LLM work, loads Redis memory, sends `system + history + current user` to the LLM, and saves only allowed final exchanges.
 - With tool calls, `ChatService` makes an initial LLM call, executes tools, then makes a final LLM call with `tool_choice="none"`; only the final visible assistant answer should be saved to memory.
-- Real-time farm readings/device states must come only from `src/services/farm_tools.py`; `get_farm_info` calls `https://renile-iot.com/api/users/devices/` with the request JWT, and `get_devices_status` is currently mock data.
+- Real-time farm readings/device states must come only from `src/services/farm_tools.py`; `get_devices_last_reads` calls `https://renile-iot.com/api/users/devices/` with the request JWT and returns simplified latest sensor readings per device.
 - LLM access is behind `services/llm/interface.py` and `services/llm/factory.py`; the only provider is DashScope via the OpenAI-compatible async client.
 - Chat memory follows the same provider pattern under `services/memory/`; the only provider is Redis.
 - Input guardrails follow the provider pattern under `services/input_guardrail/`; the only provider is HuggingFace.

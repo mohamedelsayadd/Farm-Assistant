@@ -35,7 +35,7 @@ The whole request flow is intentionally layered behind interface/factory/provide
   2. Loads Redis memory for `conversation_id`, appends the user message.
   3. First LLM call with `tool_choice="auto"` and the two registered tools.
   4. If tools were called, executes them, appends results, then makes a **final LLM call with `tool_choice="none"`**. Only the final visible assistant answer is saved to memory.
-- Tools are defined inline in `chat_service.py` (`TOOLS`) and executed via `src/services/farm_tools.py`. Real-time farm readings/device states must come **only** from these tools — never from the model's own knowledge. `get_farm_info` calls `RENILE_DEVICES_API` (`https://renile-iot.com/api/users/devices/`) with the request `JWT`; `get_devices_status` is currently mock data.
+- Tools are defined inline in `chat_service.py` (`TOOLS`) and executed via `src/services/farm_tools.py`. Real-time farm readings/device states must come **only** from these tools — never from the model's own knowledge. `get_devices_last_reads` calls `RENILE_DEVICES_API` (`https://renile-iot.com/api/users/devices/`) with the request `JWT` and returns simplified latest sensor readings per device.
 - The system prompt is in `src/services/chat_prompts.py`.
 
 ### Provider-pattern services (each has `interface.py`, `factory.py`, `providers/`)

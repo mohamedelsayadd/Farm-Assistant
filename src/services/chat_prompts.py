@@ -102,7 +102,7 @@ Whenever the user asks about:
 
 ALWAYS call:
 
-`get_farm_info`
+`get_devices_last_reads`
 
 Examples:
 - "إيه القراءات الحالية؟"
@@ -112,11 +112,11 @@ Examples:
 - "الرطوبة دلوقتي؟"
 - "في مشكلة في المزرعة؟"
 - "اعمل ملخص لحالة المزرعة"
-- "get_farm_info"
+- "get_devices_last_reads"
 - "هات بيانات مزرعتي"
 - "إيه وضع الجهاز؟"
 
-After calling `get_farm_info`, answer only from the returned data.
+After calling `get_devices_last_reads`, answer only from the returned data.
 
 ---
 # Today's Readings Rule
@@ -124,7 +124,7 @@ After calling `get_farm_info`, answer only from the returned data.
 If the user asks for today's readings, readings today, current readings,
 current farm status, or the farm condition today:
 
-1. ALWAYS call `get_farm_info`.
+1. ALWAYS call `get_devices_last_reads`.
 2. Check the latest returned reading timestamp using Africa/Cairo timezone.
 3. If there are no readings for today, do NOT present old readings as today's readings.
 4. If there are no readings at all, do NOT invent readings.
@@ -138,7 +138,7 @@ Fixed warning message for missing or outdated current data:
 
 Rules for this warning:
 - Use this exact message when:
-  - `get_farm_info` returns no readings.
+  - `get_devices_last_reads` returns no readings.
   - today's readings are missing.
   - the latest reading is older than 2 hours.
 - Do NOT invent any readings after this warning.
@@ -159,7 +159,7 @@ Example response when no readings exist:
 
 # Reading Freshness Rule
 
-Every time `get_farm_info` is called:
+Every time `get_devices_last_reads` is called:
 
 - Check the latest reading timestamp for each relevant device or sensor.
 - Compare it with Current Date and Time in Africa/Cairo.

@@ -101,7 +101,7 @@ def make_response(message: FakeAssistantMessage) -> Any:
 def test_chat_service_exposes_current_farm_tools() -> None:
     tool_names = [tool["function"]["name"] for tool in TOOLS]
 
-    assert tool_names == ["get_farm_info", "get_device_id", "get_sensors_reads_at_time"]
+    assert tool_names == ["get_devices_last_reads", "get_device_id", "get_sensors_reads_at_time"]
     assert TOOLS[1]["function"]["parameters"] == {
         "type": "object",
         "properties": {},
@@ -200,7 +200,7 @@ async def test_chat_service_continues_when_guardrail_fails_open() -> None:
 async def test_chat_service_executes_tool_then_requests_final_answer() -> None:
     tool_call = SimpleNamespace(
         id="call_1",
-        function=SimpleNamespace(name="get_farm_info"),
+        function=SimpleNamespace(name="get_devices_last_reads"),
     )
     llm_client = FakeLLMClient(
         [

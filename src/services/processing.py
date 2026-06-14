@@ -63,6 +63,40 @@ def format_farm_info_response(api_response: Any) -> dict[str, Any]:
     return FarmDevicesOut(farm=farm_name, devices=devices).model_dump()
 
 
+def format_devices_last_reads_response(api_response: Any) -> list[dict[str, dict[str, dict[str, Any]]]]:
+    raw_devices = api_response if isinstance(api_response, list) else [api_response]
+    devices: list[dict[str, dict[str, dict[str, Any]]]] = []
+
+    for device in raw_devices:
+        if not isinstance(device, dict):
+            continue
+
+        device_name = device.get("name")
+        if not isinstance(device_name, str) or not device_name:
+            continue
+
+        limits = _build_sensor_limits(device)
+        readings: dict[str, dict[str, Any]] = {}
+        for reading in device.get("lastRead", []):
+            if not isinstance(reading, dict):
+                continue
+
+            sensor_name = reading.get("name")
+            if not isinstance(sensor_name, str) or not sensor_name:
+                continue
+
+            readings[sensor_name] = {
+                "value": reading.get("reading"),
+                "last_read": _format_optional_cairo_timestamp(reading.get("createdAt")),
+                "lower_limit": limits.get(sensor_name, {}).get("lower_limit"),
+                "upper_limit": limits.get(sensor_name, {}).get("upper_limit"),
+            }
+
+        devices.append({device_name: readings})
+
+    return devices
+
+
 def format_device_ids_response(api_response: Any) -> dict[str, str]:
     raw_devices = api_response if isinstance(api_response, list) else [api_response]
 
@@ -160,6 +194,26 @@ def _build_sensors_metadata(device: dict[str, Any]) -> dict[str, dict[str, Any]]
     return sensors_meta
 
 
+def _build_sensor_limits(device: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    limits: dict[str, dict[str, Any]] = {}
+
+    for sensor in device.get("sensortypes", []):
+        if not isinstance(sensor, dict):
+            continue
+
+        sensor_type = sensor.get("sensor_type") if isinstance(sensor.get("sensor_type"), dict) else {}
+        sensor_name = sensor_type.get("type")
+        if not isinstance(sensor_name, str) or not sensor_name:
+            continue
+
+        limits[sensor_name] = {
+            "lower_limit": sensor.get("lower_limit"),
+            "upper_limit": sensor.get("upper_limit"),
+        }
+
+    return limits
+
+
 def _format_employees(raw_employees: Any) -> list[EmployeeOut]:
     if not isinstance(raw_employees, list):
         return []
@@ -254,6 +308,13 @@ def _normalize_sensor_value(value: Any) -> Any:
 
 def _to_cairo_timestamp(timestamp: datetime) -> str:
     return timestamp.astimezone(CAIRO_TIMEZONE).isoformat(timespec="milliseconds")
+
+
+def _format_optional_cairo_timestamp(value: Any) -> str | None:
+    timestamp = _parse_utc_timestamp(value)
+    if timestamp is None:
+        return None
+    return _to_cairo_timestamp(timestamp)
 
 
 def _get_nested_value(data: dict[str, Any], *keys: str) -> Any:
