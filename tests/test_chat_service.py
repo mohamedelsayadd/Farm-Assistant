@@ -113,7 +113,7 @@ def test_chat_service_exposes_current_farm_tools() -> None:
         "end_time",
         "data_type",
     ]
-    assert TOOLS[2]["function"]["parameters"]["properties"]["data_type"]["enum"] == ["day", "hour"]
+    assert TOOLS[2]["function"]["parameters"]["properties"]["data_type"]["enum"] == ["day", "month"]
 
 
 @pytest.mark.asyncio
@@ -246,7 +246,7 @@ async def test_chat_service_supports_multiple_tool_rounds() -> None:
             name="get_sensors_reads_at_time",
             arguments=(
                 '{"device_id":"device-1","start_time":"2026-05-29T01:00:00+03:00",'
-                '"end_time":"2026-05-29T02:00:00+03:00","data_type":"hour"}'
+                '"end_time":"2026-05-29T02:00:00+03:00","data_type":"day"}'
             ),
         ),
     )
@@ -282,7 +282,7 @@ async def test_chat_service_supports_multiple_tool_rounds() -> None:
             "device_id": "device-1",
             "start_time": "2026-05-29T01:00:00+03:00",
             "end_time": "2026-05-29T02:00:00+03:00",
-            "data_type": "hour",
+            "data_type": "day",
         },
     }
 
@@ -295,7 +295,7 @@ async def test_chat_service_passes_tool_arguments_to_executor(caplog: pytest.Log
             name="get_sensors_reads_at_time",
             arguments=(
                 '{"device_id":"device-1","start_time":"2026-05-29T01:00:00+03:00",'
-                '"end_time":"2026-05-29T02:00:00+03:00","data_type":"hour"}'
+                '"end_time":"2026-05-29T02:00:00+03:00","data_type":"day"}'
             ),
         ),
     )
@@ -321,7 +321,7 @@ async def test_chat_service_passes_tool_arguments_to_executor(caplog: pytest.Log
             "device_id": "device-1",
             "start_time": "2026-05-29T01:00:00+03:00",
             "end_time": "2026-05-29T02:00:00+03:00",
-            "data_type": "hour",
+            "data_type": "day",
         },
     )
     assert "chat_model_tool_calls round=1" in caplog.text

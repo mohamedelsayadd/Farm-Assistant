@@ -68,8 +68,9 @@ TOOLS: list[dict[str, Any]] = [
                     },
                     "data_type": {
                         "type": "string",
-                        "enum": ["day", "hour"],
-                        "description": "Use day for daily readings and hour for hourly readings.",
+                        "enum": ["day", "month"],
+                        "description": """Use `month` for any request spanning more than 24 hours, including last week, last month, and multi-day historical trends. It returns one reading per day.
+                                          Use `day` when hourly resolution is needed, including the last few hours, today, yesterday, or a specific hour/date (e.g. "the temperature at 5 AM the day before yesterday"). It returns one reading per hour."""
                     },
                 },
                 "required": ["device_id", "start_time", "end_time", "data_type"],

@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from services.farm_tools import get_device_id, get_devices_last_reads, get_sensors_reads_at_time
+from services.farm_tools import execute_tool, get_device_id, get_devices_last_reads, get_sensors_reads_at_time
 from services.processing import (
     format_devices_last_reads_response,
     format_device_ids_response,
@@ -168,7 +168,7 @@ async def test_get_sensors_reads_at_time_calls_data_api_and_returns_processed_re
             device_id="device-1",
             start_time="2026-05-29T01:00:00+03:00",
             end_time="2026-05-29T02:00:00+03:00",
-            data_type="hour",
+            data_type="day",
         )
 
     mock_get.assert_awaited_once_with(
@@ -177,7 +177,7 @@ async def test_get_sensors_reads_at_time_calls_data_api_and_returns_processed_re
         params={
             "device_id": "device-1",
             "start_time": "2026-05-29T01:00:00+03:00",
-            "data_type": "hour",
+            "data_type": "day",
         },
         timeout=30,
     )
@@ -201,6 +201,59 @@ async def test_get_sensors_reads_at_time_calls_data_api_and_returns_processed_re
             },
         ],
     }
+
+
+@pytest.mark.asyncio
+async def test_get_sensors_reads_at_time_uses_month_for_ranges_over_24_hours() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_HISTORICAL_READS_RESPONSE
+    with patch("services.farm_tools.httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_response
+
+        await get_sensors_reads_at_time(
+            "test-jwt",
+            device_id="device-1",
+            start_time="2026-05-28T00:00:00+03:00",
+            end_time="2026-05-30T00:00:00+03:00",
+            data_type="day",
+        )
+
+    mock_get.assert_awaited_once_with(
+        "https://renile-iot.com/api/v1/data/",
+        headers={"Authorization": "JWT test-jwt"},
+        params={
+            "device_id": "device-1",
+            "start_time": "2026-05-28T00:00:00+03:00",
+            "data_type": "month",
+        },
+        timeout=30,
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_accepts_month_data_type() -> None:
+    with patch("services.farm_tools.get_sensors_reads_at_time", new_callable=AsyncMock) as mock_tool:
+        mock_tool.return_value = {"timezone": "Africa/Cairo", "readings": []}
+
+        result = await execute_tool(
+            "test-jwt",
+            "get_sensors_reads_at_time",
+            {
+                "device_id": "device-1",
+                "start_time": "2026-05-01T00:00:00+03:00",
+                "end_time": "2026-05-31T23:59:59+03:00",
+                "data_type": "month",
+            },
+        )
+
+    assert result == {"timezone": "Africa/Cairo", "readings": []}
+    mock_tool.assert_awaited_once_with(
+        "test-jwt",
+        device_id="device-1",
+        start_time="2026-05-01T00:00:00+03:00",
+        end_time="2026-05-31T23:59:59+03:00",
+        data_type="month",
+    )
 
 
 def test_format_farm_info_response_merges_sensor_metadata_with_latest_readings() -> None:

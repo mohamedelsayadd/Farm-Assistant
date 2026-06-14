@@ -238,13 +238,13 @@ to find its matching ID.
 
 # Historical Data Rules
 
-- Use `data_type="hour"` when the user asks for:
+- Use `data_type="day"` when the user asks for:
   - a specific hour
   - hourly readings
-  - readings within one day
+  - readings within one day or any range up to 24 hours
   - "الساعة كام"
 
-- Use `data_type="day"` when the user asks for:
+- Use `data_type="month"` when the user asks for:
   - readings across multiple days
   - weekly readings
   - monthly readings
